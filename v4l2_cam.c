@@ -24,6 +24,12 @@
 #define UPPER           255
 #define CLAMP(n)        (n <= LOWER ? LOWER : n >= UPPER ? UPPER : n) 
 
+#ifdef DEBUG
+#define DEBUG_PRINT(format, args...) printf("[%s:%d] "format, __FILE__, __LINE__, ##args)
+#else
+#define DEBUG_PRINT(args...)
+#endif
+
 static int xioctl(int fd, int request, void *arg)
 {
 	int r;
@@ -99,6 +105,7 @@ void yuv422_to_rgb24(unsigned char *yuv422_buf, unsigned char *bgr24_buf, unsign
 
 int v4l2_open_cam(struct v4l2_cam *cam_data)
 {
+	struct v4l2_capability		caps;
 	struct v4l2_format		fmt;
 	struct v4l2_streamparm		parm;
 	struct v4l2_requestbuffers	req;
@@ -108,9 +115,11 @@ int v4l2_open_cam(struct v4l2_cam *cam_data)
 
 	if (cam_data == NULL)
 	{
+		DEBUG_PRINT("struct v4l2_cam == NULL\n");
 		return 0;
 	}
 
+	memset(&caps,	0, sizeof(caps));
 	memset(&fmt,	0, sizeof(fmt));
 	memset(&parm,	0, sizeof(parm));
 	memset(&req,	0, sizeof(req));
@@ -121,6 +130,14 @@ int v4l2_open_cam(struct v4l2_cam *cam_data)
 	cam_data->cam_fd = open(sz_buf, O_RDWR);
 	if (cam_data->cam_fd == -1)
 	{
+		DEBUG_PRINT("open device fail\n");
+		return 0;
+	}
+
+	//query capability
+	if (xioctl(cam_data->cam_fd, VIDIOC_QUERYCAP, &caps) == -1)
+	{
+		DEBUG_PRINT("query capability fail\n");
 		return 0;
 	}
 
@@ -130,24 +147,31 @@ int v4l2_open_cam(struct v4l2_cam *cam_data)
 	fmt.fmt.pix.height = cam_data->img_height;
 	if (cam_data->grab_fmt == V4L2_CAM_FMT_YUV)
 		fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
-	if (cam_data->grab_fmt == V4L2_CAM_FMT_MJPG)
+	else if (cam_data->grab_fmt == V4L2_CAM_FMT_MJPG)
 		fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
+	else if (cam_data->grab_fmt == V4L2_CAM_FMT_GREY)
+		fmt.fmt.pix.pixelformat == V4L2_PIX_FMT_GREY;
 	else
 		fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
 	fmt.fmt.pix.field = V4L2_FIELD_NONE;
 	if (xioctl(cam_data->cam_fd, VIDIOC_S_FMT, &fmt) == -1)
 	{
+		DEBUG_PRINT("setup format fail\n");
 		return 0;
 	}
 
 	//setup frame rate
-	parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	float_to_fraction(cam_data->grab_fps, &num, &den);
-	parm.parm.capture.timeperframe.numerator = den;		//that is reight
-	parm.parm.capture.timeperframe.denominator = num;
-	if (xioctl(cam_data->cam_fd, VIDIOC_S_PARM, &parm) == -1)
+	if (cam_data->grab_fps > 0.0)
 	{
-		return 0;
+		parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		float_to_fraction(cam_data->grab_fps, &num, &den);
+		parm.parm.capture.timeperframe.numerator = den;		//that assignment
+		parm.parm.capture.timeperframe.denominator = num;	//is right
+		if (xioctl(cam_data->cam_fd, VIDIOC_S_PARM, &parm) == -1)
+		{
+			DEBUG_PRINT("setup frame rate fail\n");
+			return 0;
+		}
 	}
 
 	//request buffer
@@ -160,6 +184,7 @@ int v4l2_open_cam(struct v4l2_cam *cam_data)
 #endif
 	if (xioctl(cam_data->cam_fd, VIDIOC_REQBUFS, &req) == -1)
 	{
+		DEBUG_PRINT("request buffer fail\n");
 		return 0;
 	}
 
@@ -173,6 +198,7 @@ int v4l2_open_cam(struct v4l2_cam *cam_data)
 	if (xioctl(cam_data->cam_fd, VIDIOC_QUERYBUF, &buf) == -1)
 #endif
 	{
+		DEBUG_PRINT("query buffer fail\n");
 		return 0;
 	}
 
@@ -181,6 +207,7 @@ int v4l2_open_cam(struct v4l2_cam *cam_data)
 	cam_data->data_buf = (unsigned char *) mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, cam_data->cam_fd, buf.m.offset);
 	if (cam_data->data_buf == MAP_FAILED)
 	{
+		DEBUG_PRINT("map buffer fail\n");
 		return 0;
 	}
 #endif
@@ -198,12 +225,14 @@ int v4l2_open_cam(struct v4l2_cam *cam_data)
 #endif
 	if (xioctl(cam_data->cam_fd, VIDIOC_QBUF, &buf) == -1)
 	{
+		DEBUG_PRINT("queue buffer fail\n");
 		return 0;
 	}
 
 	//start stream
 	if (xioctl(cam_data->cam_fd, VIDIOC_STREAMON, &buf.type) == -1)
 	{
+		DEBUG_PRINT("start stream fail\n");
 		return 0;
 	}
 
@@ -216,6 +245,7 @@ int v4l2_grab_cam(struct v4l2_cam *cam_data, unsigned int *grab_len)
 
 	if (cam_data == NULL)
 	{
+		DEBUG_PRINT("struct v4l2_cam == NULL\n");
 		return 0;
 	}
 
@@ -230,6 +260,7 @@ int v4l2_grab_cam(struct v4l2_cam *cam_data, unsigned int *grab_len)
 #endif
 	if (xioctl(cam_data->cam_fd, VIDIOC_DQBUF, &buf) == -1)
 	{
+		DEBUG_PRINT("dequeue buffer fail\n");
 		return 0;
 	}
 
@@ -239,6 +270,7 @@ int v4l2_grab_cam(struct v4l2_cam *cam_data, unsigned int *grab_len)
 	//queue buffer
 	if (xioctl(cam_data->cam_fd, VIDIOC_QBUF, &buf) == -1)
 	{
+		DEBUG_PRINT("queue buffer fail\n");
 		return 0;
 	}
 
@@ -249,10 +281,17 @@ int v4l2_close_cam(struct v4l2_cam *cam_data)
 {
 	enum v4l2_buf_type type;
 
+	if (cam_data == NULL)
+	{
+		DEBUG_PRINT("struct v4l2_cam == NULL\n");
+		return 0;
+	}
+
 	//stop stream
 	type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	if (xioctl(cam_data->cam_fd, VIDIOC_STREAMOFF, &type) == -1)
 	{
+		DEBUG_PRINT("stop stream fail\n");
 		return 0;
 	}
 
@@ -260,6 +299,7 @@ int v4l2_close_cam(struct v4l2_cam *cam_data)
 #if !MEM_USER_PTR
 	if (cam_data->data_buf  && cam_data->buf_len && munmap(cam_data->data_buf, cam_data->buf_len) == -1)
 	{
+		DEBUG_PRINT("unmap buffer fail\n");
 		return 0;
 	}
 	cam_data->data_buf = 0;
@@ -269,6 +309,7 @@ int v4l2_close_cam(struct v4l2_cam *cam_data)
 	//close device
 	if (close(cam_data->cam_fd) == -1)
 	{
+		DEBUG_PRINT("close device fail\n");
 		return 0;
 	}
 	cam_data->cam_fd = 0;

@@ -8,7 +8,8 @@ extern "C" {
 enum V4L2_CAM_FMT
 {
 	V4L2_CAM_FMT_YUV,
-	V4L2_CAM_FMT_MJPG
+	V4L2_CAM_FMT_MJPG,
+	V4L2_CAM_FMT_GREY
 };
 
 struct v4l2_cam {
