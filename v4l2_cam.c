@@ -150,7 +150,9 @@ int v4l2_open_cam(struct v4l2_cam *cam_data)
 	else if (cam_data->grab_fmt == V4L2_CAM_FMT_MJPG)
 		fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
 	else if (cam_data->grab_fmt == V4L2_CAM_FMT_GREY)
-		fmt.fmt.pix.pixelformat == V4L2_PIX_FMT_GREY;
+		fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_GREY;
+	else if (cam_data->grab_fmt == V4L2_CAM_FMT_Y16)
+		fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_Y16;
 	else
 		fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
 	fmt.fmt.pix.field = V4L2_FIELD_NONE;
